@@ -1,0 +1,48 @@
+spring:
+  application:
+    name: expense-tracker
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/expense}
+    username: ${DB_USER:expense}
+    password: ${DB_PASSWORD}
+    hikari:
+      maximum-pool-size: 15
+      connection-timeout: 10000
+  jackson:
+    deserialization:
+      accept-float-as-int: false
+      use-long-for-ints: true
+  session:
+    store-type: jdbc
+    jdbc:
+      initialize-schema: never
+  flyway:
+    enabled: true
+server:
+  port: 8080
+  forward-headers-strategy: native
+  servlet:
+    session:
+      timeout: 15m
+      cookie:
+        http-only: true
+        secure: ${COOKIE_SECURE:true}
+        same-site: lax
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+      probes:
+        enabled: true
+app:
+  demo-enabled: ${DEMO_ENABLED:false}
+  demo-password: ${DEMO_PASSWORD:}
+  worker-enabled: ${WORKER_ENABLED:true}
+logging:
+  level:
+    root: INFO
+    org.springframework.security: WARN

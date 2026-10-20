@@ -1,0 +1,26 @@
+flowchart TB
+  Browser["Customer or reviewer browser"] --> DNS["Amazon Route 53"]
+  DNS --> ALB["Application Load Balancer HTTPS"]
+  WAF["AWS WAF"] -. protection .-> ALB
+  ACM["AWS Certificate Manager"] -. TLS .-> ALB
+  subgraph VPC["VPC with two availability zones"]
+    ALB
+    subgraph A["Zone A"]
+      AppA["Private ECS Fargate task A"] --> Writer["Single RDS writer endpoint"]
+      DBA["Isolated RDS primary"]
+      AppA -. outbound .-> NATA["Public NAT Gateway A"]
+    end
+    subgraph B["Zone B"]
+      AppB["Private ECS Fargate task B"] --> Writer
+      DBB["Isolated RDS standby"]
+      AppB -. outbound .-> NATB["Public NAT Gateway B"]
+    end
+    ALB --> AppA
+    ALB --> AppB
+    Writer --> DBA
+    DBA -. "RDS Multi AZ failover" .-> DBB
+  end
+  ECR["Amazon ECR images"] -. pull .-> AppA
+  Secrets["Secrets Manager"] -. startup .-> AppB
+  AppA -. logs .-> CW["Amazon CloudWatch"]
+  AppB -. logs .-> CW

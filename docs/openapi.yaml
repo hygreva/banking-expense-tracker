@@ -1,0 +1,733 @@
+openapi: 3.0.3
+info:
+  title: Banking and Expense Tracker API
+  version: 1.0.0
+  description: Simulated USD accounts and manual expense observations. Money values
+    are integer cents.
+servers:
+- url: http://localhost:4200/api/v1
+security:
+- sessionCookie: []
+paths:
+  /auth/csrf:
+    get:
+      summary: Read CSRF token and header name
+      responses:
+        '200':
+          description: Successful response
+        '400':
+          description: Invalid request
+        '401':
+          description: Unauthenticated
+        '403':
+          description: Forbidden or CSRF failure
+        '404':
+          description: Not found
+        '409':
+          description: Conflict
+      security: []
+  /auth/login:
+    post:
+      summary: Session login
+      responses:
+        '200':
+          description: Successful response
+        '400':
+          description: Invalid request
+        '401':
+          description: Unauthenticated
+        '403':
+          description: Forbidden or CSRF failure
+        '404':
+          description: Not found
+        '409':
+          description: Conflict
+      parameters:
+      - name: X-CSRF-TOKEN
+        in: header
+        required: true
+        schema: &id001
+          type: string
+        description: Use headerName and token from /auth/csrf; fetch fresh token after
+          login.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                  format: email
+                password: *id001
+              required:
+              - email
+              - password
+              additionalProperties: false
+  /auth/logout:
+    post:
+      summary: Invalidate session
+      responses:
+        '204':
+          description: Logged out
+        '403':
+          description: CSRF failure
+      parameters:
+      - name: X-CSRF-TOKEN
+        in: header
+        required: true
+        schema: *id001
+        description: Use headerName and token from /auth/csrf; fetch fresh token after
+          login.
+  /auth/me:
+    get:
+      summary: Authenticated user and roles
+      responses:
+        '200':
+          description: Successful response
+        '400':
+          description: Invalid request
+        '401':
+          description: Unauthenticated
+        '403':
+          description: Forbidden or CSRF failure
+        '404':
+          description: Not found
+        '409':
+          description: Conflict
+  /accounts:
+    get:
+      summary: List own accounts
+      responses:
+        '200':
+          description: Successful response
+        '400':
+          description: Invalid request
+        '401':
+          description: Unauthenticated
+        '403':
+          description: Forbidden or CSRF failure
+        '404':
+          description: Not found
+        '409':
+          description: Conflict
+    post:
+      summary: Create zero balance account
+      responses:
+        '201':
+          description: Created
+        '400':
+          description: Invalid input
+        '403':
+          description: Forbidden
+      parameters:
+      - name: X-CSRF-TOKEN
+        in: header
+        required: true
+        schema: *id001
+        description: Use headerName and token from /auth/csrf; fetch fresh token after
+          login.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Account'
+  /accounts/{id}/close:
+    post:
+      summary: Close zero balance account with no pending transfer
+      responses:
+        '200':
+          description: Successful response
+        '400':
+          description: Invalid request
+        '401':
+          description: Unauthenticated
+        '403':
+          description: Forbidden or CSRF failure
+        '404':
+          description: Not found
+        '409':
+          description: Conflict
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: &id002
+          type: string
+          format: uuid
+      - name: X-CSRF-TOKEN
+        in: header
+        required: true
+        schema: *id001
+        description: Use headerName and token from /auth/csrf; fetch fresh token after
+          login.
+  /accounts/{id}/transactions:
+    get:
+      summary: Cursor paginated posted history
+      responses:
+        '200':
+          description: Successful response
+        '400':
+          description: Invalid request
+        '401':
+          description: Unauthenticated
+        '403':
+          description: Forbidden or CSRF failure
+        '404':
+          description: Not found
+        '409':
+          description: Conflict
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: *id002
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 25
+      - name: cursor
+        in: query
+        schema: *id001
+  /beneficiaries:
+    get:
+      summary: List own beneficiaries
+      responses:
+        '200':
+          description: Successful response
+        '400':
+          description: Invalid request
+        '401':
+          description: Unauthenticated
+        '403':
+          description: Forbidden or CSRF failure
+        '404':
+          description: Not found
+        '409':
+          description: Conflict
+    post:
+      summary: Add shareable recipient reference
+      responses:
+        '201':
+          description: Created
+        '404':
+          description: Invalid recipient
+        '409':
+          description: Already exists
+      parameters:
+      - name: X-CSRF-TOKEN
+        in: header
+        required: true
+        schema: *id001
+        description: Use headerName and token from /auth/csrf; fetch fresh token after
+          login.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Beneficiary'
+  /transfers:
+    post:
+      summary: Submit idempotent transfer
+      responses:
+        '201':
+          description: Posted
+        '202':
+          description: Held for review; no reservation
+        '422':
+          description: Rejected with safe reason
+        '409':
+          description: Key mismatch or account state
+        '503':
+          description: Retry unchanged payload and key
+      parameters:
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema: *id002
+      - name: X-CSRF-TOKEN
+        in: header
+        required: true
+        schema: *id001
+        description: Use headerName and token from /auth/csrf; fetch fresh token after
+          login.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Transfer'
+  /transfers/{id}:
+    get:
+      summary: Read current status of own submitted transfer
+      responses:
+        '200':
+          description: Successful response
+        '400':
+          description: Invalid request
+        '401':
+          description: Unauthenticated
+        '403':
+          description: Forbidden or CSRF failure
+        '404':
+          description: Not found
+        '409':
+          description: Conflict
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: *id002
+  /categories:
+    get:
+      summary: List own categories
+      responses:
+        '200':
+          description: Successful response
+        '400':
+          description: Invalid request
+        '401':
+          description: Unauthenticated
+        '403':
+          description: Forbidden or CSRF failure
+        '404':
+          description: Not found
+        '409':
+          description: Conflict
+    post:
+      summary: Create category
+      responses:
+        '201':
+          description: Created
+        '400':
+          description: Invalid input
+        '409':
+          description: Already exists
+      parameters:
+      - name: X-CSRF-TOKEN
+        in: header
+        required: true
+        schema: *id001
+        description: Use headerName and token from /auth/csrf; fetch fresh token after
+          login.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Category'
+  /manual-activities:
+    get:
+      summary: List observations in period
+      responses:
+        '200':
+          description: Successful response
+        '400':
+          description: Invalid request
+        '401':
+          description: Unauthenticated
+        '403':
+          description: Forbidden or CSRF failure
+        '404':
+          description: Not found
+        '409':
+          description: Conflict
+      parameters: &id003
+      - name: from
+        in: query
+        required: true
+        schema:
+          type: string
+          format: date
+        description: Inclusive from; exclusive to; customer time zone. At most 366
+          days.
+      - name: to
+        in: query
+        required: true
+        schema:
+          type: string
+          format: date
+        description: Inclusive from; exclusive to; customer time zone. At most 366
+          days.
+    post:
+      summary: Create manual observation without changing balances
+      responses:
+        '201':
+          description: Created
+        '400':
+          description: Invalid input
+        '404':
+          description: Category not visible
+      parameters:
+      - name: X-CSRF-TOKEN
+        in: header
+        required: true
+        schema: *id001
+        description: Use headerName and token from /auth/csrf; fetch fresh token after
+          login.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Activity'
+  /manual-activities/{id}:
+    patch:
+      summary: Edit observation with current version
+      responses:
+        '200':
+          description: Successful response
+        '400':
+          description: Invalid request
+        '401':
+          description: Unauthenticated
+        '403':
+          description: Forbidden or CSRF failure
+        '404':
+          description: Not found
+        '409':
+          description: Conflict
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: *id002
+      - name: X-CSRF-TOKEN
+        in: header
+        required: true
+        schema: *id001
+        description: Use headerName and token from /auth/csrf; fetch fresh token after
+          login.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Activity'
+    delete:
+      summary: Soft delete observation
+      responses:
+        '204':
+          description: Deleted
+        '404':
+          description: Not found
+        '409':
+          description: Stale version
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: *id002
+      - name: If-Match
+        in: header
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - name: X-CSRF-TOKEN
+        in: header
+        required: true
+        schema: *id001
+        description: Use headerName and token from /auth/csrf; fetch fresh token after
+          login.
+  /budgets/{month}:
+    get:
+      summary: List monthly budgets and spending
+      responses:
+        '200':
+          description: Successful response
+        '400':
+          description: Invalid request
+        '401':
+          description: Unauthenticated
+        '403':
+          description: Forbidden or CSRF failure
+        '404':
+          description: Not found
+        '409':
+          description: Conflict
+      parameters:
+      - name: month
+        in: path
+        required: true
+        schema:
+          type: string
+          example: 2026-10
+  /budgets/{month}/{category}:
+    put:
+      summary: Create or update category budget using version
+      responses:
+        '200':
+          description: Successful response
+        '400':
+          description: Invalid request
+        '401':
+          description: Unauthenticated
+        '403':
+          description: Forbidden or CSRF failure
+        '404':
+          description: Not found
+        '409':
+          description: Conflict
+      parameters:
+      - name: category
+        in: path
+        required: true
+        schema: *id002
+      - name: month
+        in: path
+        required: true
+        schema:
+          type: string
+          example: 2026-10
+      - name: X-CSRF-TOKEN
+        in: header
+        required: true
+        schema: *id001
+        description: Use headerName and token from /auth/csrf; fetch fresh token after
+          login.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Budget'
+  /reports/summary:
+    get:
+      summary: Read totals and chart data
+      responses:
+        '200':
+          description: Successful response
+        '400':
+          description: Invalid request
+        '401':
+          description: Unauthenticated
+        '403':
+          description: Forbidden or CSRF failure
+        '404':
+          description: Not found
+        '409':
+          description: Conflict
+      parameters: *id003
+  /reports/export:
+    get:
+      summary: Export manual observations as CSV up to 10000 rows
+      responses:
+        '200':
+          description: Successful response
+          content:
+            text/csv:
+              schema: *id001
+        '400':
+          description: Invalid request
+        '401':
+          description: Unauthenticated
+        '403':
+          description: Forbidden or CSRF failure
+        '404':
+          description: Not found
+        '409':
+          description: Conflict
+      parameters: *id003
+  /notifications:
+    get:
+      summary: Read latest 50 in-app notifications
+      responses:
+        '200':
+          description: Successful response
+        '400':
+          description: Invalid request
+        '401':
+          description: Unauthenticated
+        '403':
+          description: Forbidden or CSRF failure
+        '404':
+          description: Not found
+        '409':
+          description: Conflict
+  /fraud-cases:
+    get:
+      summary: Reviewer only pending cases with masked context
+      responses:
+        '200':
+          description: Successful response
+        '400':
+          description: Invalid request
+        '401':
+          description: Unauthenticated
+        '403':
+          description: Forbidden or CSRF failure
+        '404':
+          description: Not found
+        '409':
+          description: Conflict
+  /fraud-cases/{id}/decision:
+    post:
+      summary: Reviewer only independent decision
+      responses:
+        '200':
+          description: Successful response
+        '400':
+          description: Invalid request
+        '401':
+          description: Unauthenticated
+        '403':
+          description: Forbidden or CSRF failure
+        '404':
+          description: Not found
+        '409':
+          description: Conflict
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: *id002
+      - name: X-CSRF-TOKEN
+        in: header
+        required: true
+        schema: *id001
+        description: Use headerName and token from /auth/csrf; fetch fresh token after
+          login.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Decision'
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: SESSION
+  schemas:
+    Account:
+      type: object
+      properties:
+        displayName:
+          type: string
+          maxLength: 60
+        kind:
+          type: string
+          enum:
+          - CHECKING
+          - SAVINGS
+      required:
+      - displayName
+      - kind
+      additionalProperties: false
+    Beneficiary:
+      type: object
+      properties:
+        recipientRef: *id002
+        alias:
+          type: string
+          maxLength: 60
+      required:
+      - recipientRef
+      - alias
+      additionalProperties: false
+    Transfer:
+      type: object
+      properties:
+        sourceAccountId: *id002
+        beneficiaryId: *id002
+        amountMinor:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 1000000
+        currency:
+          type: string
+          enum:
+          - USD
+        memo:
+          type: string
+          maxLength: 140
+      required:
+      - sourceAccountId
+      - beneficiaryId
+      - amountMinor
+      - currency
+      - memo
+      additionalProperties: false
+    Activity:
+      type: object
+      properties:
+        categoryId: *id002
+        kind:
+          type: string
+          enum:
+          - EXPENSE
+          - INCOME
+        amountMinor: &id004
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 1000000000
+        occurredAt:
+          type: string
+          format: date-time
+        note:
+          type: string
+          maxLength: 140
+        version: &id005
+          type: integer
+          format: int64
+          nullable: true
+      required:
+      - categoryId
+      - kind
+      - amountMinor
+      - occurredAt
+      - note
+      additionalProperties: false
+    Category:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 60
+        kind:
+          type: string
+          enum:
+          - EXPENSE
+          - INCOME
+      required:
+      - name
+      - kind
+      additionalProperties: false
+    Budget:
+      type: object
+      properties:
+        limitMinor: *id004
+        version: *id005
+      required:
+      - limitMinor
+      additionalProperties: false
+    Decision:
+      type: object
+      properties:
+        decision:
+          type: string
+          enum:
+          - APPROVE
+          - REJECT
+        reason:
+          type: string
+          maxLength: 500
+        version:
+          type: integer
+          format: int64
+      required:
+      - decision
+      - reason
+      - version
+      additionalProperties: false

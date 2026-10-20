@@ -1,0 +1,9 @@
+app:
+  demo-enabled: true
+  demo-password: Integration-Test-Only-2026
+  worker-enabled: false
+server:
+  servlet:
+    session:
+      cookie:
+        secure: false

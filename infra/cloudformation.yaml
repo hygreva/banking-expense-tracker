@@ -1,0 +1,696 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Personal banking demo on ECS Fargate and private RDS PostgreSQL. Creates
+  billable resources.
+Parameters:
+  BackendImage:
+    Type: String
+    Description: Immutable backend image URI in ECR
+  FrontendImage:
+    Type: String
+    Description: Frontend image built using nginx.aws.conf
+  CertificateArn:
+    Type: String
+    Description: ACM certificate ARN in this region for DomainName
+  DomainName:
+    Type: String
+    Description: Hostname covered by certificate
+  HostedZoneId:
+    Type: AWS::Route53::HostedZone::Id
+  DemoPassword:
+    Type: String
+    NoEcho: true
+    MinLength: 12
+    Description: Password for seeded demo users. Use a unique disposable value.
+Resources:
+  Vpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.40.0.0/16
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+      - Key: Name
+        Value:
+          Fn::Sub: ${AWS::StackName}-vpc
+  Igw:
+    Type: AWS::EC2::InternetGateway
+    Properties: {}
+  IgwAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId:
+        Ref: Vpc
+      InternetGatewayId:
+        Ref: Igw
+  PublicRoutes:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId:
+        Ref: Vpc
+  PublicDefault:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId:
+        Ref: PublicRoutes
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId:
+        Ref: Igw
+    DependsOn: IgwAttachment
+  Public1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:
+        Ref: Vpc
+      CidrBlock: 10.40.1.0/24
+      AvailabilityZone:
+        Fn::Select:
+        - 0
+        - Fn::GetAZs: ''
+      MapPublicIpOnLaunch: false
+      Tags:
+      - Key: Name
+        Value:
+          Fn::Sub: ${AWS::StackName}-Public1
+  App1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:
+        Ref: Vpc
+      CidrBlock: 10.40.11.0/24
+      AvailabilityZone:
+        Fn::Select:
+        - 0
+        - Fn::GetAZs: ''
+      MapPublicIpOnLaunch: false
+      Tags:
+      - Key: Name
+        Value:
+          Fn::Sub: ${AWS::StackName}-App1
+  Db1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:
+        Ref: Vpc
+      CidrBlock: 10.40.21.0/24
+      AvailabilityZone:
+        Fn::Select:
+        - 0
+        - Fn::GetAZs: ''
+      MapPublicIpOnLaunch: false
+      Tags:
+      - Key: Name
+        Value:
+          Fn::Sub: ${AWS::StackName}-Db1
+  PublicAssoc1:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId:
+        Ref: Public1
+      RouteTableId:
+        Ref: PublicRoutes
+  NatEip1:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+    DependsOn: IgwAttachment
+  Nat1:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId:
+        Fn::GetAtt:
+        - NatEip1
+        - AllocationId
+      SubnetId:
+        Ref: Public1
+    DependsOn: PublicDefault
+  AppRoutes1:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId:
+        Ref: Vpc
+  AppDefault1:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId:
+        Ref: AppRoutes1
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId:
+        Ref: Nat1
+  AppAssoc1:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId:
+        Ref: App1
+      RouteTableId:
+        Ref: AppRoutes1
+  DbRoutes1:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId:
+        Ref: Vpc
+  DbAssoc1:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId:
+        Ref: Db1
+      RouteTableId:
+        Ref: DbRoutes1
+  Public2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:
+        Ref: Vpc
+      CidrBlock: 10.40.2.0/24
+      AvailabilityZone:
+        Fn::Select:
+        - 1
+        - Fn::GetAZs: ''
+      MapPublicIpOnLaunch: false
+      Tags:
+      - Key: Name
+        Value:
+          Fn::Sub: ${AWS::StackName}-Public2
+  App2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:
+        Ref: Vpc
+      CidrBlock: 10.40.12.0/24
+      AvailabilityZone:
+        Fn::Select:
+        - 1
+        - Fn::GetAZs: ''
+      MapPublicIpOnLaunch: false
+      Tags:
+      - Key: Name
+        Value:
+          Fn::Sub: ${AWS::StackName}-App2
+  Db2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:
+        Ref: Vpc
+      CidrBlock: 10.40.22.0/24
+      AvailabilityZone:
+        Fn::Select:
+        - 1
+        - Fn::GetAZs: ''
+      MapPublicIpOnLaunch: false
+      Tags:
+      - Key: Name
+        Value:
+          Fn::Sub: ${AWS::StackName}-Db2
+  PublicAssoc2:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId:
+        Ref: Public2
+      RouteTableId:
+        Ref: PublicRoutes
+  NatEip2:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+    DependsOn: IgwAttachment
+  Nat2:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId:
+        Fn::GetAtt:
+        - NatEip2
+        - AllocationId
+      SubnetId:
+        Ref: Public2
+    DependsOn: PublicDefault
+  AppRoutes2:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId:
+        Ref: Vpc
+  AppDefault2:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId:
+        Ref: AppRoutes2
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId:
+        Ref: Nat2
+  AppAssoc2:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId:
+        Ref: App2
+      RouteTableId:
+        Ref: AppRoutes2
+  DbRoutes2:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId:
+        Ref: Vpc
+  DbAssoc2:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId:
+        Ref: Db2
+      RouteTableId:
+        Ref: DbRoutes2
+  AlbSg:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Public TLS and redirect only
+      VpcId:
+        Ref: Vpc
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: 80
+        ToPort: 80
+        CidrIp: 0.0.0.0/0
+      - IpProtocol: tcp
+        FromPort: 443
+        ToPort: 443
+        CidrIp: 0.0.0.0/0
+  AppSg:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Containers accept only ALB traffic
+      VpcId:
+        Ref: Vpc
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: 80
+        ToPort: 80
+        SourceSecurityGroupId:
+          Ref: AlbSg
+      - IpProtocol: tcp
+        FromPort: 8080
+        ToPort: 8080
+        SourceSecurityGroupId:
+          Ref: AlbSg
+  DbSg:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Database accepts only containers
+      VpcId:
+        Ref: Vpc
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: 5432
+        ToPort: 5432
+        SourceSecurityGroupId:
+          Ref: AppSg
+  DbSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Isolated database subnets
+      SubnetIds:
+      - Ref: Db1
+      - Ref: Db2
+  Database:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      Engine: postgres
+      DBInstanceClass: db.t4g.small
+      AllocatedStorage: '20'
+      MaxAllocatedStorage: 100
+      StorageType: gp3
+      StorageEncrypted: true
+      MultiAZ: true
+      PubliclyAccessible: false
+      DBName: expense
+      MasterUsername: expenseadmin
+      ManageMasterUserPassword: true
+      DBSubnetGroupName:
+        Ref: DbSubnetGroup
+      VPCSecurityGroups:
+      - Ref: DbSg
+      BackupRetentionPeriod: 7
+      DeletionProtection: true
+      CopyTagsToSnapshot: true
+      AutoMinorVersionUpgrade: true
+    DeletionPolicy: Snapshot
+    UpdateReplacePolicy: Snapshot
+  DemoSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Description: Disposable demo user password
+      SecretString:
+        Ref: DemoPassword
+  Logs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      RetentionInDays: 14
+  ExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: ecs-tasks.amazonaws.com
+          Action: sts:AssumeRole
+      ManagedPolicyArns:
+      - Fn::Sub: arn:${AWS::Partition}:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      Policies:
+      - PolicyName: ReadApplicationSecrets
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+            - secretsmanager:GetSecretValue
+            Resource:
+            - Fn::GetAtt:
+              - Database
+              - MasterUserSecret.SecretArn
+            - Ref: DemoSecret
+  TaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: ecs-tasks.amazonaws.com
+          Action: sts:AssumeRole
+  Cluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterSettings:
+      - Name: containerInsights
+        Value: enabled
+  Task:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      RequiresCompatibilities:
+      - FARGATE
+      NetworkMode: awsvpc
+      Cpu: '512'
+      Memory: '1024'
+      ExecutionRoleArn:
+        Fn::GetAtt:
+        - ExecutionRole
+        - Arn
+      TaskRoleArn:
+        Fn::GetAtt:
+        - TaskRole
+        - Arn
+      RuntimePlatform:
+        CpuArchitecture: X86_64
+        OperatingSystemFamily: LINUX
+      ContainerDefinitions:
+      - Name: backend
+        Image:
+          Ref: BackendImage
+        Essential: true
+        Memory: 768
+        PortMappings:
+        - ContainerPort: 8080
+        Environment:
+        - Name: DB_URL
+          Value:
+            Fn::Sub: jdbc:postgresql://${Database.Endpoint.Address}:5432/expense?sslmode=verify-full&sslrootcert=/app/global-bundle.pem
+        - Name: COOKIE_SECURE
+          Value: 'true'
+        - Name: DEMO_ENABLED
+          Value: 'true'
+        Secrets:
+        - Name: DB_USER
+          ValueFrom:
+            Fn::Sub: '${Database.MasterUserSecret.SecretArn}:username::'
+        - Name: DB_PASSWORD
+          ValueFrom:
+            Fn::Sub: '${Database.MasterUserSecret.SecretArn}:password::'
+        - Name: DEMO_PASSWORD
+          ValueFrom:
+            Ref: DemoSecret
+        LogConfiguration:
+          LogDriver: awslogs
+          Options:
+            awslogs-group:
+              Ref: Logs
+            awslogs-region:
+              Ref: AWS::Region
+            awslogs-stream-prefix: backend
+      - Name: frontend
+        Image:
+          Ref: FrontendImage
+        Essential: true
+        Memory: 128
+        PortMappings:
+        - ContainerPort: 80
+        LogConfiguration:
+          LogDriver: awslogs
+          Options:
+            awslogs-group:
+              Ref: Logs
+            awslogs-region:
+              Ref: AWS::Region
+            awslogs-stream-prefix: frontend
+  Alb:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Type: application
+      Scheme: internet-facing
+      Subnets:
+      - Ref: Public1
+      - Ref: Public2
+      SecurityGroups:
+      - Ref: AlbSg
+      LoadBalancerAttributes:
+      - Key: routing.http.drop_invalid_header_fields.enabled
+        Value: 'true'
+    DependsOn: IgwAttachment
+  BackendTarget:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      VpcId:
+        Ref: Vpc
+      TargetType: ip
+      Protocol: HTTP
+      Port: 8080
+      HealthCheckPath: /actuator/health/readiness
+      HealthCheckIntervalSeconds: 30
+      HealthyThresholdCount: 2
+      TargetGroupAttributes:
+      - Key: deregistration_delay.timeout_seconds
+        Value: '30'
+  FrontendTarget:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      VpcId:
+        Ref: Vpc
+      TargetType: ip
+      Protocol: HTTP
+      Port: 80
+      HealthCheckPath: /health
+      HealthCheckIntervalSeconds: 30
+      HealthyThresholdCount: 2
+      TargetGroupAttributes:
+      - Key: deregistration_delay.timeout_seconds
+        Value: '30'
+  HttpListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn:
+        Ref: Alb
+      Port: 80
+      Protocol: HTTP
+      DefaultActions:
+      - Type: redirect
+        RedirectConfig:
+          Port: '443'
+          Protocol: HTTPS
+          StatusCode: HTTP_301
+  HttpsListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn:
+        Ref: Alb
+      Port: 443
+      Protocol: HTTPS
+      SslPolicy: ELBSecurityPolicy-TLS13-1-2-2021-06
+      Certificates:
+      - CertificateArn:
+          Ref: CertificateArn
+      DefaultActions:
+      - Type: forward
+        TargetGroupArn:
+          Ref: FrontendTarget
+  ApiRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      ListenerArn:
+        Ref: HttpsListener
+      Priority: 1
+      Conditions:
+      - Field: path-pattern
+        Values:
+        - /api/*
+      Actions:
+      - Type: forward
+        TargetGroupArn:
+          Ref: BackendTarget
+  Service:
+    Type: AWS::ECS::Service
+    Properties:
+      Cluster:
+        Ref: Cluster
+      LaunchType: FARGATE
+      PlatformVersion: 1.4.0
+      DesiredCount: 2
+      TaskDefinition:
+        Ref: Task
+      AvailabilityZoneRebalancing: ENABLED
+      HealthCheckGracePeriodSeconds: 180
+      DeploymentConfiguration:
+        MinimumHealthyPercent: 100
+        MaximumPercent: 200
+        DeploymentCircuitBreaker:
+          Enable: true
+          Rollback: true
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: DISABLED
+          Subnets:
+          - Ref: App1
+          - Ref: App2
+          SecurityGroups:
+          - Ref: AppSg
+      LoadBalancers:
+      - ContainerName: backend
+        ContainerPort: 8080
+        TargetGroupArn:
+          Ref: BackendTarget
+      - ContainerName: frontend
+        ContainerPort: 80
+        TargetGroupArn:
+          Ref: FrontendTarget
+    DependsOn:
+    - ApiRule
+    - HttpsListener
+    - AppDefault1
+    - AppDefault2
+  ScaleTarget:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      MinCapacity: 2
+      MaxCapacity: 4
+      ResourceId:
+        Fn::Sub: service/${Cluster}/${Service.Name}
+      ScalableDimension: ecs:service:DesiredCount
+      ServiceNamespace: ecs
+  ScalePolicy:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: CpuTarget
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId:
+        Ref: ScaleTarget
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 60
+        PredefinedMetricSpecification:
+          PredefinedMetricType: ECSServiceAverageCPUUtilization
+        ScaleOutCooldown: 60
+        ScaleInCooldown: 180
+  Dns:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId:
+        Ref: HostedZoneId
+      Name:
+        Ref: DomainName
+      Type: A
+      AliasTarget:
+        DNSName:
+          Fn::GetAtt:
+          - Alb
+          - DNSName
+        HostedZoneId:
+          Fn::GetAtt:
+          - Alb
+          - CanonicalHostedZoneID
+        EvaluateTargetHealth: true
+  WebAcl:
+    Type: AWS::WAFv2::WebACL
+    Properties:
+      Scope: REGIONAL
+      DefaultAction:
+        Allow: {}
+      VisibilityConfig:
+        CloudWatchMetricsEnabled: true
+        MetricName: BankingAcl
+        SampledRequestsEnabled: false
+      Rules:
+      - Name: RateLimit
+        Priority: 0
+        Action:
+          Block: {}
+        Statement:
+          RateBasedStatement:
+            Limit: 2000
+            AggregateKeyType: IP
+        VisibilityConfig:
+          CloudWatchMetricsEnabled: true
+          MetricName: BankingRate
+          SampledRequestsEnabled: false
+      - Name: CommonRules
+        Priority: 1
+        OverrideAction:
+          None: {}
+        Statement:
+          ManagedRuleGroupStatement:
+            VendorName: AWS
+            Name: AWSManagedRulesCommonRuleSet
+        VisibilityConfig:
+          CloudWatchMetricsEnabled: true
+          MetricName: BankingCommon
+          SampledRequestsEnabled: false
+  WebAclAssociation:
+    Type: AWS::WAFv2::WebACLAssociation
+    Properties:
+      ResourceArn:
+        Ref: Alb
+      WebACLArn:
+        Fn::GetAtt:
+        - WebAcl
+        - Arn
+  AlbErrors:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: ALB target errors above 1 in 5 minutes
+      Namespace: AWS/ApplicationELB
+      MetricName: HTTPCode_Target_5XX_Count
+      Dimensions:
+      - Name: LoadBalancer
+        Value:
+          Fn::GetAtt:
+          - Alb
+          - LoadBalancerFullName
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+Outputs:
+  Url:
+    Value:
+      Fn::Sub: https://${DomainName}
+  DatabaseSecretArn:
+    Value:
+      Fn::GetAtt:
+      - Database
+      - MasterUserSecret.SecretArn
+  ClusterName:
+    Value:
+      Ref: Cluster
+  ServiceName:
+    Value:
+      Fn::GetAtt:
+      - Service
+      - Name
+  LogGroup:
+    Value:
+      Ref: Logs
